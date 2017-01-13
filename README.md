@@ -5,7 +5,7 @@ Depends on Splinter and Firefox.
 
 I once had to migrate a bunch of DNS from 123-reg to AWS. Much to my dismay, 123-Reg do not seem to have any sort of API, and provide no way of exporting zone files. I opened a ticket to see if their support department could dump zone files for me, but they refused. So, I made this thing.
 
-It logs in to their site, scrapes the DNS records from their web portal, and writes it out to nice zone files that can then be imported to real DNS providers like AWS' Rout53 offering.
+It logs in to their site, scrapes the DNS records from their web portal, and writes it out to nice zone files.
 
 Usage:
 
