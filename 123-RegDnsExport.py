@@ -3,7 +3,6 @@ import time
 import sys
 import dns.resolver
 
-
 def exportZone(domain, browser):
     zone = []
     browser.visit("https://www.123-reg.co.uk/secure/cpanel/manage-dns?domain=" + domain)
@@ -12,22 +11,23 @@ def exportZone(domain, browser):
     while browser.is_element_present_by_id('dns_entry_0') == False:
         time.sleep(1)
         a += 1
-        if a == 5: # Jeez, this is taking a while to load
-            a = 0
-            browser.click_link_by_id('advanced-tab') # kick...
+        if a == 5:  # Jeez, this is taking a while to load
+            if browser.is_element_present_by_id('dns_entry_0') == False and browser.is_element_present_by_id('new-footer') == True:
+                print("No Records for {}, but page has already loaded".format(domain))
+                return "lookupFailed"
     table = browser.find_by_xpath("//*[contains(@id, 'dns_entry_')]")
     for row in table:
         hostdict = {}
         cells = row.find_by_css('td')
-        if cells[4].text.endswith('...'): # sometimes long things get truncated by their UI
-            target = cells[4].html.split('title="')[1].split('"')[0] # fortunately it's here in a title field
+        if cells[4].text.endswith('...'):  # sometimes long things get truncated by their UI
+            target = cells[4].html.split('title="')[1].split('"')[0]  # fortunately it's here in a title field
         else:
             target = cells[4].text
         hostname = cells[0].text
         hostdict['hostname'] = hostname
-        if cells[1].text == 'TXT/SPF': # come on 123-reg, this isn't a real record type
+        if cells[1].text == 'TXT/SPF':  # come on 123-reg, this isn't a real record type
             hostdict['type'] = 'TXT'
-            hostdict['dest'] = '"{}"'.format(target) # and TXT records need quotes
+            hostdict['dest'] = '"{}"'.format(target)  # and TXT records need quotes
         else:
             hostdict['type'] = cells[1].text
             hostdict['dest'] = target
@@ -38,16 +38,16 @@ def exportZone(domain, browser):
 
 def login(browser):
     browser.visit("https://www.123-reg.co.uk/secure")
-    browser.find_by_name('username')[1].fill(username)
-    browser.find_by_name('password')[1].fill(password)
-    browser.find_by_name('login')[1].click()
+    browser.fill('username', inputUsername)
+    browser.fill('password', inputPassword)
+    browser.find_by_id('login').first.click()
     while browser.is_element_visible_by_xpath('//*[@id="body"]/div/div[5]/div[3]/div/table/tbody/tr/td[3]/input') == False:
         time.sleep(1)
     return browser
 
 
 def enumDomains(browser):
-    url = "https://www.123-reg.co.uk/secure/cpanel/domain/view_domains"
+    url = "https://www.123-reg.co.uk/secure/cpanel/domain/view_domains?rows=1000"
     browser.visit(url)
     table = browser.find_by_id('domstable').text.split('\n')[1:]
     domlist = []
@@ -66,7 +66,7 @@ def tabulate(rows_of_columns):
     columns_of_rows = list(zip(*rows_of_columns))
     try:
         column_widths = [max(map(len, column)) for column in columns_of_rows]
-    except TypeError: # Sometimes column contains an int
+    except TypeError:  # Sometimes column contains an int
         column_widths = [max(map(len, str(column))) for column in columns_of_rows]
     column_specs = ('{{:{w}}}'.format(w=max(width, 1)) for width in column_widths)
     format_spec = ' '.join(column_specs)
@@ -105,25 +105,31 @@ def defaultTTL(zone, NSrecord, domain):
     res = dns.resolver.Resolver()
     answer = res.query(NSrecord)
     res.nameservers = [str(answer.rrset.items[0])]
-    for record in zone:
-        if record['ttl'] == '':
-            host = record['hostname']
-            if host == '@':
-                query = domain
-            else:
-                query = host + '.' + domain
-            answer = res.query(query)
-            return answer.rrset.ttl
+    try:
+        for record in zone:
+            if record['ttl'] == '':
+                host = record['hostname']
+                if host == '@':
+                    query = domain
+                else:
+                    query = host + '.' + domain
+                answer = res.query(query)
+                return answer.rrset.ttl
+    except:
+        print('No Answer found for {}'.format(domain))
+        return
     return False
 
 
 def processDomain(domain, browser):
     NSrecord = str(getNameServerRecord(domain))
-    if not NSrecord.endswith('123-reg.co.uk.'): # Sometimes they're only the registrar and DNS is elsewhere
+    if not NSrecord.endswith('123-reg.co.uk.') or NSrecord.endswith('hosteurope.com.'):  # Sometimes they're only the registrar and DNS is elsewhere
         print("123-Reg does not appear to be the DNS provider for {}.".format(domain))
         return
     zone = exportZone(domain, browser)
-    defTTL = defaultTTL(zone, NSrecord, domain) # Try to figure out the domain's default TTL
+    if zone == "lookupFailed":
+        return
+    defTTL = defaultTTL(zone, NSrecord, domain)  # Try to figure out the domain's default TTL
     zonef = formatZone(domain, zone, defTTL)
     print(zonef)
     writeZone(domain, zonef)
@@ -131,8 +137,8 @@ def processDomain(domain, browser):
 
 if __name__ == "__main__":
     with Browser("firefox") as browser:
-        username = sys.argv[2]
-        password = sys.argv[3]
+        inputUsername = sys.argv[2]
+        inputPassword = sys.argv[3]
         browser = login(browser)
         if sys.argv[1] != 'all':
             domain = sys.argv[1]
@@ -141,4 +147,3 @@ if __name__ == "__main__":
             domlist = enumDomains(browser)
             for domain in domlist:
                 processDomain(domain, browser)
-
